@@ -1,33 +1,31 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { useCurrency } from '../CurrencyContext.jsx';
 import { fmt } from '../utils.js';
 
-export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
+export default function OtherExpenseModal({ open, mainBalance, onClose, onConfirm }) {
+  const cur = useCurrency();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (!mode) return;
+    if (!open) return;
     setAmount('');
     setNote('');
     setOverride(false);
     const t = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(t);
-  }, [mode]);
+  }, [open]);
 
-  if (!mode) return null;
+  if (!open) return null;
 
   const numeric = Number(amount);
   const valid = !isNaN(numeric) && numeric > 0;
-  const isWithdraw = mode === 'withdraw';
-  const wouldOverflow = isWithdraw && valid && numeric > balance;
+  const wouldOverflow = valid && numeric > mainBalance;
   const blocked = wouldOverflow && !override;
-
-  const accent = isWithdraw ? '#f0f0f0' : '#1dd561';
-  const title = isWithdraw ? 'Withdraw from savings' : 'Deposit to savings';
-  const emoji = isWithdraw ? '↗' : '🏦';
+  const accent = '#cbd5e1';
 
   const submit = () => {
     if (!valid || blocked) return;
@@ -36,7 +34,7 @@ export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
 
   return (
     <AnimatePresence>
-      {mode && (
+      {open && (
         <motion.div
           key="backdrop"
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -59,12 +57,10 @@ export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
             <div className="absolute -top-16 -right-12 h-44 w-44 rounded-full opacity-30 blur-3xl" style={{ background: accent }} />
             <div className="relative flex items-center gap-3">
               <div className="grid place-items-center h-11 w-11 rounded-2xl text-2xl"
-                   style={{ background: `${accent}22`, border: `1px solid ${accent}55` }}>
-                {emoji}
-              </div>
+                   style={{ background: `${accent}22`, border: `1px solid ${accent}55` }}>🧾</div>
               <div className="flex-1">
-                <div className="text-platinum font-semibold">{title}</div>
-                <div className="text-xs text-platinum/60">Balance: <span style={{ color: '#1dd561' }}>{fmt(balance)}</span></div>
+                <div className="text-platinum font-semibold">Other expense</div>
+                <div className="text-xs text-platinum/60">Pulls straight from Main · Balance: <span className="text-malachite">{fmt(mainBalance, cur)}</span></div>
               </div>
               <button onClick={onClose} className="text-platinum/70 hover:text-platinum px-2 py-1 rounded-lg hover:bg-white/5">✕</button>
             </div>
@@ -83,11 +79,11 @@ export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
                 />
               </div>
               <div>
-                <label className="text-xs uppercase tracking-widest text-platinum/50">Note (optional)</label>
+                <label className="text-xs uppercase tracking-widest text-platinum/50">What was it?</label>
                 <input
                   type="text"
                   className="glass-input mt-1"
-                  placeholder={isWithdraw ? 'e.g. rent, transfer to checking' : 'e.g. paycheck, gift'}
+                  placeholder="e.g. textbooks, rent, school fee"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
@@ -97,13 +93,11 @@ export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
               <AnimatePresence>
                 {wouldOverflow && (
                   <motion.label
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
                     className="flex items-center gap-2 text-xs text-red-300 bg-red-500/10 border border-red-400/20 rounded-xl px-3 py-2"
                   >
                     <input type="checkbox" checked={override} onChange={(e) => setOverride(e.target.checked)} />
-                    This will push savings below zero. Override?
+                    Main balance will go negative. Override?
                   </motion.label>
                 )}
               </AnimatePresence>
@@ -115,20 +109,12 @@ export default function SavingsModal({ mode, balance, onClose, onConfirm }) {
                 disabled={!valid || blocked}
                 className="w-full mt-2 py-3.5 rounded-2xl font-semibold text-base no-select transition"
                 style={{
-                  background: !valid || blocked
-                    ? 'rgba(240,240,240,0.08)'
-                    : isWithdraw
-                      ? 'linear-gradient(135deg, #f0f0f0, #cbd5e1)'
-                      : 'linear-gradient(135deg, #1dd561, #1dd561cc)',
+                  background: !valid || blocked ? 'rgba(240,240,240,0.08)' : `linear-gradient(135deg, ${accent}, ${accent}cc)`,
                   color: !valid || blocked ? '#f0f0f088' : '#10002b',
                   boxShadow: !valid || blocked ? 'none' : `0 12px 30px -10px ${accent}`,
                 }}
               >
-                {blocked
-                  ? 'Confirm override to continue'
-                  : valid
-                    ? (isWithdraw ? `Withdraw ${fmt(numeric)}` : `Deposit ${fmt(numeric)}`)
-                    : 'Enter an amount'}
+                {blocked ? 'Confirm override' : valid ? `Spend ${fmt(numeric, cur)}` : 'Enter an amount'}
               </motion.button>
             </div>
           </motion.div>

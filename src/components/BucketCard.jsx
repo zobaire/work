@@ -1,8 +1,10 @@
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useState } from 'react';
+import { useCurrency } from '../CurrencyContext.jsx';
 import { fmt, remaining, sumSpent, fmtDate } from '../utils.js';
 
-export default function BucketCard({ bucket, onAddExpense, onDeleteTx, expanded, onToggleExpand }) {
+export default function BucketCard({ bucket, onAddExpense, onDeleteTx, onEditTx, expanded, onToggleExpand }) {
+  const cur = useCurrency();
   const spent = sumSpent(bucket.transactions);
   const left = remaining(bucket);
   const pct = Math.max(0, Math.min(100, (spent / Math.max(bucket.budget, 1)) * 100));
@@ -57,7 +59,7 @@ export default function BucketCard({ bucket, onAddExpense, onDeleteTx, expanded,
             </motion.div>
             <div>
               <div className="text-platinum text-base font-semibold tracking-tight">{bucket.name}</div>
-              <div className="text-platinum/60 text-xs">Budget {fmt(bucket.budget)}</div>
+              <div className="text-platinum/60 text-xs">Budget {fmt(bucket.budget, cur)}</div>
             </div>
           </div>
           <div className="text-right">
@@ -68,7 +70,7 @@ export default function BucketCard({ bucket, onAddExpense, onDeleteTx, expanded,
               transition={{ duration: 0.45, ease: 'easeOut' }}
               className="text-2xl font-bold tracking-tight"
             >
-              {fmt(left)}
+              {fmt(left, cur)}
             </motion.div>
             <div className="text-[10px] uppercase tracking-widest text-platinum/50">left</div>
           </div>
@@ -140,7 +142,8 @@ export default function BucketCard({ bucket, onAddExpense, onDeleteTx, expanded,
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 10, height: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl hover:bg-white/5 group"
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl hover:bg-white/5 group cursor-pointer"
+                      onClick={() => onEditTx?.(t)}
                     >
                       <div className="min-w-0">
                         <div className="text-sm text-platinum truncate">
@@ -150,10 +153,10 @@ export default function BucketCard({ bucket, onAddExpense, onDeleteTx, expanded,
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-sm font-semibold" style={{ color: bucket.color }}>
-                          -{fmt(t.amount)}
+                          -{fmt(t.amount, cur)}
                         </div>
                         <button
-                          onClick={() => onDeleteTx(bucket.id, t.id)}
+                          onClick={(ev) => { ev.stopPropagation(); onDeleteTx(bucket.id, t.id); }}
                           className="opacity-0 group-hover:opacity-100 text-xs text-platinum/60 hover:text-red-400 transition px-2 py-1 rounded-md"
                           aria-label="Delete transaction"
                         >
