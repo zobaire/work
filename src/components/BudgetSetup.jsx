@@ -16,7 +16,7 @@ export default function BudgetSetup({ initial = DEFAULT_BUCKETS, onSave }) {
     const cleaned = drafts.map((b) => ({
       ...b,
       budget: Math.max(0, Number(b.budget) || 0),
-      transactions: [],
+      transactions: Array.isArray(b.transactions) ? b.transactions : [],
     }));
     onSave(cleaned);
   };

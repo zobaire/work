@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import AnimatedBackdrop from './components/AnimatedBackdrop.jsx';
 import BucketCard from './components/BucketCard.jsx';
 import AddExpenseModal from './components/AddExpenseModal.jsx';
@@ -23,6 +23,9 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confettiTrigger, setConfettiTrigger] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [importError, setImportError] = useState(null);
+  const fileInputRef = useRef(null);
 
   const buckets = state.buckets;
 
@@ -75,6 +78,68 @@ export default function App() {
     setConfirmDelete(null);
   };
 
+  const exportJSON = () => {
+    const payload = {
+      app: '5-bucket-tracker',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      state,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `5-bucket-tracker-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    haptic(15);
+  };
+
+  const onPickFile = () => fileInputRef.current?.click();
+
+  const onFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const candidate = parsed?.state && Array.isArray(parsed.state.buckets) ? parsed.state : parsed;
+      if (!candidate || !Array.isArray(candidate.buckets) || candidate.buckets.length === 0) {
+        throw new Error('File does not contain bucket data.');
+      }
+      for (const b of candidate.buckets) {
+        if (!b.id || !b.name || !Array.isArray(b.transactions)) {
+          throw new Error('Bucket is missing required fields (id, name, transactions).');
+        }
+      }
+      setPendingImport(candidate);
+    } catch (err) {
+      setImportError(err.message || 'Could not read JSON.');
+    }
+  };
+
+  const confirmImport = () => {
+    setState({
+      setupComplete: true,
+      buckets: pendingImport.buckets.map((b) => ({
+        ...b,
+        budget: Number(b.budget) || 0,
+        transactions: b.transactions.map((t) => ({
+          id: t.id || uid(),
+          amount: Number(t.amount) || 0,
+          note: t.note || '',
+          date: t.date || new Date().toISOString(),
+        })),
+      })),
+    });
+    setPendingImport(null);
+    haptic(20);
+  };
+
   const onReset = () => {
     setState((s) => ({
       ...s,
@@ -108,7 +173,21 @@ export default function App() {
             Today: <span className="text-platinum">{fmt(totals.today)}</span> · Left this month: <span className="text-malachite">{fmt(totals.left)}</span>
           </div>
         </motion.div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 flex-wrap justify-end">
+          <button
+            onClick={exportJSON}
+            className="text-xs px-3 py-2 rounded-xl text-platinum/80 hover:text-platinum hover:bg-white/5 border border-white/10"
+            title="Download a JSON backup"
+          >
+            Export
+          </button>
+          <button
+            onClick={onPickFile}
+            className="text-xs px-3 py-2 rounded-xl text-platinum/80 hover:text-platinum hover:bg-white/5 border border-white/10"
+            title="Restore from a JSON backup"
+          >
+            Import
+          </button>
           <button
             onClick={() => setShowSetup(true)}
             className="text-xs px-3 py-2 rounded-xl text-platinum/80 hover:text-platinum hover:bg-white/5 border border-white/10"
@@ -124,6 +203,13 @@ export default function App() {
             Reset
           </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={onFileChosen}
+          className="hidden"
+        />
       </header>
 
       <motion.div
@@ -191,6 +277,28 @@ export default function App() {
         tone="danger"
         onCancel={() => setConfirmReset(false)}
         onConfirm={onReset}
+      />
+
+      <ConfirmDialog
+        open={!!pendingImport}
+        title="Replace your data?"
+        message={pendingImport ? `Importing ${pendingImport.buckets.length} buckets and ${pendingImport.buckets.reduce((a, b) => a + (b.transactions?.length || 0), 0)} transactions. This overwrites everything on this device.` : ''}
+        confirmText="Replace with import"
+        cancelText="Cancel"
+        tone="malachite"
+        onCancel={() => setPendingImport(null)}
+        onConfirm={confirmImport}
+      />
+
+      <ConfirmDialog
+        open={!!importError}
+        title="Couldn't import that file"
+        message={importError || ''}
+        confirmText="OK"
+        cancelText="Close"
+        tone="danger"
+        onCancel={() => setImportError(null)}
+        onConfirm={() => setImportError(null)}
       />
 
       <ConfirmDialog
