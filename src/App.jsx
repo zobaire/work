@@ -1,18 +1,23 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AnimatedBackdrop from './components/AnimatedBackdrop.jsx';
 import BucketCard from './components/BucketCard.jsx';
 import AddExpenseModal from './components/AddExpenseModal.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import BudgetSetup from './components/BudgetSetup.jsx';
 import Confetti from './components/Confetti.jsx';
+import SavingsCard from './components/SavingsCard.jsx';
+import SavingsModal from './components/SavingsModal.jsx';
 import { useLocalStorage } from './hooks/useLocalStorage.js';
 import { DEFAULT_BUCKETS, STORAGE_KEY } from './constants.js';
 import { fmt, haptic, isToday, sumSpent, uid } from './utils.js';
 
+const emptySavings = () => ({ transactions: [] });
+
 const initialState = () => ({
   setupComplete: false,
   buckets: DEFAULT_BUCKETS.map((b) => ({ ...b, transactions: [] })),
+  savings: emptySavings(),
 });
 
 export default function App() {
@@ -25,9 +30,22 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
   const [importError, setImportError] = useState(null);
+  const [savingsMode, setSavingsMode] = useState(null);
+  const [confirmDeleteSaving, setConfirmDeleteSaving] = useState(null);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (!state.savings || !Array.isArray(state.savings.transactions)) {
+      setState((s) => ({ ...s, savings: emptySavings() }));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const buckets = state.buckets;
+  const savings = state.savings ?? emptySavings();
+  const savingsBalance = useMemo(
+    () => savings.transactions.reduce((a, t) => a + (t.type === 'deposit' ? Number(t.amount) : -Number(t.amount)), 0),
+    [savings.transactions]
+  );
 
   const totals = useMemo(() => {
     const budget = buckets.reduce((a, b) => a + Number(b.budget || 0), 0);
@@ -123,6 +141,15 @@ export default function App() {
   };
 
   const confirmImport = () => {
+    const importedSavingsTx = Array.isArray(pendingImport.savings?.transactions)
+      ? pendingImport.savings.transactions.map((t) => ({
+          id: t.id || uid(),
+          type: t.type === 'withdraw' ? 'withdraw' : 'deposit',
+          amount: Number(t.amount) || 0,
+          note: t.note || '',
+          date: t.date || new Date().toISOString(),
+        }))
+      : [];
     setState({
       setupComplete: true,
       buckets: pendingImport.buckets.map((b) => ({
@@ -135,9 +162,36 @@ export default function App() {
           date: t.date || new Date().toISOString(),
         })),
       })),
+      savings: { transactions: importedSavingsTx },
     });
     setPendingImport(null);
     haptic(20);
+  };
+
+  const onSavingsConfirm = ({ amount, note }) => {
+    const type = savingsMode;
+    setState((s) => ({
+      ...s,
+      savings: {
+        transactions: [
+          ...(s.savings?.transactions ?? []),
+          { id: uid(), type, amount, note, date: new Date().toISOString() },
+        ],
+      },
+    }));
+    haptic(20);
+    setConfettiTrigger({ id: uid(), x: window.innerWidth / 2, y: window.innerHeight / 3 });
+    setSavingsMode(null);
+  };
+
+  const onDeleteSavingTx = (id) => setConfirmDeleteSaving(id);
+  const reallyDeleteSavingTx = () => {
+    const id = confirmDeleteSaving;
+    setState((s) => ({
+      ...s,
+      savings: { transactions: (s.savings?.transactions ?? []).filter((t) => t.id !== id) },
+    }));
+    setConfirmDeleteSaving(null);
   };
 
   const onReset = () => {
@@ -243,6 +297,15 @@ export default function App() {
         </div>
       </motion.div>
 
+      <div className="mt-5">
+        <SavingsCard
+          savings={savings}
+          onDeposit={() => setSavingsMode('deposit')}
+          onWithdraw={() => setSavingsMode('withdraw')}
+          onDeleteTx={onDeleteSavingTx}
+        />
+      </div>
+
       <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <AnimatePresence>
           {buckets.map((b) => (
@@ -266,6 +329,24 @@ export default function App() {
         bucket={editing}
         onClose={() => setEditing(null)}
         onConfirm={onConfirmExpense}
+      />
+
+      <SavingsModal
+        mode={savingsMode}
+        balance={savingsBalance}
+        onClose={() => setSavingsMode(null)}
+        onConfirm={onSavingsConfirm}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteSaving}
+        title="Delete savings entry?"
+        message="The balance will adjust automatically."
+        confirmText="Delete"
+        cancelText="Cancel"
+        tone="danger"
+        onCancel={() => setConfirmDeleteSaving(null)}
+        onConfirm={reallyDeleteSavingTx}
       />
 
       <ConfirmDialog
